@@ -97,6 +97,16 @@ class EvidenceCitation(BaseModel):
     relevance: float = 0.5
 
 
+class RagDocument(BaseModel):
+    document_id: str = Field(default_factory=lambda: new_id("doc"))
+    title: str
+    source_type: CitationSourceType
+    content: str
+    tags: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 class MedicationAlert(BaseModel):
     alert_id: str = Field(default_factory=lambda: new_id("medalert"))
     medication: str
@@ -172,6 +182,21 @@ class RagQueryRequest(BaseModel):
 class RagQueryResponse(BaseModel):
     query: str
     citations: list[EvidenceCitation]
+
+
+class RagDocumentInput(BaseModel):
+    title: str
+    source_type: CitationSourceType
+    content: str
+    tags: list[str] = Field(default_factory=list)
+
+
+class RagDocumentUpsertRequest(BaseModel):
+    documents: list[RagDocumentInput]
+
+
+class RagDocumentUpsertResponse(BaseModel):
+    documents: list[RagDocument]
 
 
 class DiagnosisRequest(BaseModel):

@@ -1,6 +1,6 @@
 # MedDash API Contract
 
-This document reflects the current runtime contract in source, not the longer-term target architecture.
+This document reflects the current runtime contract in source.
 
 ## Consultation
 
@@ -19,29 +19,29 @@ This document reflects the current runtime contract in source, not the longer-te
 ## Agents
 
 - `GET /api/agents/status`
-  - Returns synthetic agent state derived from the latest in-memory session.
+  - Returns synthetic agent state derived from the latest persisted consultation session.
 
 ## RAG
 
 - `POST /api/rag/query`
   - Body: `{"session_id"?: string, "query": string}`
-  - Returns orchestrator-generated citations for the query.
-  - Current limitation: citations are generated in code and are not backed by PostgreSQL, Redis, or a document index.
+  - Returns citations resolved from PostgreSQL-backed RAG documents.
+- `POST /api/rag/documents`
+  - Body: `{"documents": [{"title": string, "source_type": "guideline" | "drug_label" | "case", "content": string, "tags"?: string[]}]}`
+  - Upserts document records for later retrieval via `POST /api/rag/query`.
 
 ## Clinical Outputs
 
 - `POST /api/diagnosis/generate`
   - Body: `{"session_id"?: string, "symptoms": string[], "notes"?: string}`
-  - Returns an orchestrator-generated care plan report.
-  - Current limitation: diagnosis output is not durably persisted outside the active in-memory session.
+  - Returns an orchestrator-generated care plan report using persisted citations plus session context when `session_id` is provided.
 - `POST /api/patient/save`
   - Body: `{"patient": PatientProfile}`
-  - Saves the patient to the current in-process store.
+  - Saves the patient to PostgreSQL.
 - `POST /api/workflows/{session_id}/handoff`
   - Body: `{"actor"?: string, "reason": string}`
   - Marks the session as needing handoff and appends an audit event.
 
 ## Not Yet Implemented
 
-- `POST /api/rag/documents`
 - `GET /api/prompts`

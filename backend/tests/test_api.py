@@ -1,18 +1,27 @@
+import os
+
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app import create_app
 
-client = TestClient(create_app())
+os.environ["MEDDASH_STORE_MODE"] = "inmemory"
 
 
-def test_health() -> None:
+@pytest.fixture
+def client() -> TestClient:
+    with TestClient(create_app()) as test_client:
+        yield test_client
+
+
+def test_health(client: TestClient) -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
-def test_consult_flow_and_events() -> None:
+def test_consult_flow_and_events(client: TestClient) -> None:
     start_response = client.post(
         "/api/consult/start",
         json={
@@ -49,12 +58,28 @@ def test_consult_flow_and_events() -> None:
     assert "event: workflow.step" in event_response.text
 
 
-def test_supporting_endpoints() -> None:
+def test_supporting_endpoints(client: TestClient) -> None:
     patient_response = client.post(
         "/api/patient/save",
         json={"patient": {"full_name": "Bob Smith", "age": 30}},
     )
     assert patient_response.status_code == 200
+
+    document_response = client.post(
+        "/api/rag/documents",
+        json={
+            "documents": [
+                {
+                    "title": "Community-acquired pneumonia note",
+                    "source_type": "guideline",
+                    "content": "Chest imaging is recommended when pneumonia symptoms escalate.",
+                    "tags": ["pneumonia", "imaging"],
+                }
+            ]
+        },
+    )
+    assert document_response.status_code == 200
+    assert document_response.json()["documents"]
 
     rag_response = client.post("/api/rag/query", json={"query": "fever and cough"})
     assert rag_response.status_code == 200

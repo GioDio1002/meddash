@@ -11,10 +11,10 @@
 
 ## Current Runtime Reality
 
-- `frontend/src/App.tsx` starts a real consultation through the backend, but the Knowledge & RAG and Diagnosis & Treatment tabs still fall back to `frontend/src/mock-data.ts` when no live session has been created.
-- `backend/src/backend/app.py` wires `InMemoryStore` directly into application state.
-- `backend/src/backend/orchestrator.py` depends on that same store for sessions, patients, and derived agent status.
-- `backend/src/backend/store.py` keeps all sessions and patient records in Python dictionaries, so data is lost on restart and cannot be shared across backend workers.
+- `frontend/src/App.tsx` queries the backend directly for Knowledge & RAG and Diagnosis & Treatment.
+- `backend/src/backend/app.py` boots a PostgreSQL + Redis-backed store by default and supports `MEDDASH_STORE_MODE=inmemory` only as an explicit fallback.
+- `backend/src/backend/orchestrator.py` uses persisted sessions and RAG documents for citation retrieval plus diagnosis context composition.
+- `backend/src/backend/store.py` keeps PostgreSQL as the durable store for patients, sessions, and RAG documents while Redis caches session payloads for faster reads.
 
 ## Target Persistence Split
 

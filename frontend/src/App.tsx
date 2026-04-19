@@ -34,24 +34,69 @@ import {
   SettingOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { startTransition, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { startTransition, useDeferredValue, useEffect, useState } from 'react'
 import './App.css'
 import {
   agentStatuses,
-  citations,
   consultationMessages,
-  diagnosisCandidates,
-  medicationAlerts,
   metrics,
   workflowTasks,
 } from './mock-data'
-import type { AgentStatus, BackendSession, BackendWorkflowEvent } from './types'
+import type {
+  AgentStatus,
+  BackendCarePlan,
+  BackendRagQueryResponse,
+  BackendSession,
+  BackendWorkflowEvent,
+} from './types'
 
 const { Paragraph, Text, Title } = Typography
+const DEFAULT_KNOWLEDGE_QUERY = 'acute chest pain shortness of breath medication safety'
+
+function extractSymptoms(input: string): string[] {
+  return input
+    .split(/,| and |\n/i)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function mapCitationsToSources(
+  citations: BackendRagQueryResponse['citations'] | BackendSession['citations']
+) {
+  return citations.map((item) => ({
+    id: item.citation_id,
+    title: item.title,
+    sourceType: item.source_type === 'drug_label' ? 'drug-label' : item.source_type,
+    excerpt: item.snippet,
+  }))
+}
+
+function mapCarePlanCandidates(carePlan: BackendCarePlan | null | undefined) {
+  return carePlan?.differential.map((item) => ({
+    name: item.label,
+    confidence: item.confidence,
+    rationale: item.rationale,
+  })) ?? []
+}
+
+function mapMedicationAlerts(carePlan: BackendCarePlan | null | undefined) {
+  return carePlan?.medication_alerts.map((item) => ({
+    id: item.alert_id,
+    severity:
+      item.severity === 'blocking'
+        ? 'high'
+        : item.severity === 'warning'
+          ? 'medium'
+          : 'low',
+    title: `${item.medication} safety alert`,
+    detail: item.message,
+  })) ?? []
+}
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
-  const [sourceQuery, setSourceQuery] = useState('')
+  const [knowledgeDraftQuery, setKnowledgeDraftQuery] = useState(DEFAULT_KNOWLEDGE_QUERY)
+  const [knowledgeQuery, setKnowledgeQuery] = useState(DEFAULT_KNOWLEDGE_QUERY)
   const [runtimeSession, setRuntimeSession] = useState<BackendSession | null>(null)
   const [runtimeEvents, setRuntimeEvents] = useState<BackendWorkflowEvent[]>([])
   const [patientName, setPatientName] = useState('Jamie Chen')
@@ -61,7 +106,11 @@ function App() {
   const [followupMessage, setFollowupMessage] = useState(
     'I am allergic to penicillin and was prescribed amoxicillin.'
   )
-  const deferredQuery = useDeferredValue(sourceQuery)
+  const deferredDiagnosisInput = useDeferredValue(
+    runtimeSession
+      ? runtimeSession.messages.map((messageItem) => messageItem.content).join(' ')
+      : openingMessage
+  )
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
   const runtimeSessionId = runtimeSession?.session_id
 
@@ -85,6 +134,50 @@ function App() {
   })
 
   const liveAgentStatuses = agentStatusQuery.data ?? agentStatuses
+
+  const ragPreviewQuery = useQuery({
+    queryKey: ['rag-preview', knowledgeQuery],
+    queryFn: async () => {
+      const response = await fetch(`${apiBaseUrl}/api/rag/query`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query: knowledgeQuery }),
+      })
+      if (!response.ok) {
+        throw new Error('Failed to fetch knowledge citations')
+      }
+      return (await response.json()) as BackendRagQueryResponse
+    },
+    retry: false,
+    enabled: Boolean(knowledgeQuery.trim()),
+  })
+
+  const diagnosisPreviewQuery = useQuery({
+    queryKey: ['diagnosis-preview', runtimeSessionId ?? 'draft', deferredDiagnosisInput],
+    queryFn: async () => {
+      const payload = runtimeSessionId
+        ? {
+            session_id: runtimeSessionId,
+            symptoms: extractSymptoms(deferredDiagnosisInput),
+            notes: deferredDiagnosisInput,
+          }
+        : {
+            symptoms: extractSymptoms(deferredDiagnosisInput),
+            notes: deferredDiagnosisInput,
+          }
+      const response = await fetch(`${apiBaseUrl}/api/diagnosis/generate`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!response.ok) {
+        throw new Error('Failed to generate diagnosis preview')
+      }
+      return (await response.json()) as BackendCarePlan
+    },
+    retry: false,
+    enabled: Boolean(deferredDiagnosisInput.trim()),
+  })
 
   const startConsultMutation = useMutation({
     mutationFn: async () => {
@@ -190,49 +283,22 @@ function App() {
     : consultationMessages
 
   const displayedSources = runtimeSession
-    ? runtimeSession.citations.map((item) => ({
-        id: item.citation_id,
-        title: item.title,
-        sourceType:
-          item.source_type === 'drug_label' ? 'drug-label' : item.source_type,
-        excerpt: item.snippet,
-      }))
-    : citations
+    ? mapCitationsToSources(runtimeSession.citations)
+    : mapCitationsToSources(ragPreviewQuery.data?.citations ?? [])
 
   const displayedMedicationAlerts = runtimeSession
-    ? runtimeSession.medication_alerts.map((item) => ({
-        id: item.alert_id,
-        severity:
-          item.severity === 'blocking'
-            ? 'high'
-            : item.severity === 'warning'
-              ? 'medium'
-              : 'low',
-        title: `${item.medication} safety alert`,
-        detail: item.message,
-      }))
-    : medicationAlerts
+    ? mapMedicationAlerts(runtimeSession.care_plan)
+    : mapMedicationAlerts(diagnosisPreviewQuery.data)
 
   const displayedDiagnosisCandidates = runtimeSession?.care_plan
-    ? runtimeSession.care_plan.differential.map((item) => ({
-        name: item.label,
-        confidence: item.confidence,
-        rationale: item.rationale,
-      }))
-    : diagnosisCandidates
+    ? mapCarePlanCandidates(runtimeSession.care_plan)
+    : mapCarePlanCandidates(diagnosisPreviewQuery.data)
 
-  const filteredSources = useMemo(() => {
-    const query = deferredQuery.trim().toLowerCase()
-    if (!query) {
-      return displayedSources
-    }
-    return displayedSources.filter((item) => {
-      return (
-        item.title.toLowerCase().includes(query) ||
-        item.excerpt.toLowerCase().includes(query)
-      )
-    })
-  }, [deferredQuery, displayedSources])
+  const diagnosisSummary = runtimeSession?.care_plan?.summary ?? diagnosisPreviewQuery.data?.summary
+  const diagnosisFollowUpPlan =
+    runtimeSession?.care_plan?.follow_up_plan ?? diagnosisPreviewQuery.data?.follow_up_plan
+  const diagnosisRecommendedTests =
+    runtimeSession?.care_plan?.recommended_tests ?? diagnosisPreviewQuery.data?.recommended_tests ?? []
 
   const workflowColumns = [
     ['queued', 'Queued'],
@@ -553,11 +619,23 @@ function App() {
                     <Space orientation="vertical" style={{ width: '100%' }}>
                       <Input.Search
                         allowClear
+                        value={knowledgeDraftQuery}
                         placeholder="Filter by guideline, label, or case note"
-                        onChange={(event) => setSourceQuery(event.target.value)}
+                        onChange={(event) => setKnowledgeDraftQuery(event.target.value)}
+                        onSearch={(value) =>
+                          setKnowledgeQuery(value.trim() || DEFAULT_KNOWLEDGE_QUERY)
+                        }
                       />
+                      {ragPreviewQuery.isError && !runtimeSession ? (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          title="Backend query unavailable"
+                          description="Knowledge retrieval now depends on the backend. Start the backend services to load citations."
+                        />
+                      ) : null}
                       <div className="stack">
-                        {filteredSources.map((item) => (
+                        {displayedSources.map((item) => (
                           <div key={item.id} className="source-item">
                             <Space>
                               <Tag
@@ -573,9 +651,17 @@ function App() {
                               </Tag>
                               <Text strong>{item.title}</Text>
                             </Space>
-                            <Text>{item.excerpt}</Text>
+                              <Text>{item.excerpt}</Text>
                           </div>
                         ))}
+                        {!displayedSources.length && !ragPreviewQuery.isPending ? (
+                          <Alert
+                            type="info"
+                            showIcon
+                            title="No backend citations returned"
+                            description="Try a more specific clinical query or start a live consultation session."
+                          />
+                        ) : null}
                       </div>
                     </Space>
                   </Card>
@@ -593,6 +679,9 @@ function App() {
                 <div className="surface-grid">
                   <Card className="surface-card" title="Differential candidates">
                     <div className="stack">
+                      {diagnosisSummary ? (
+                        <Alert type="info" showIcon title="Backend-generated summary" description={diagnosisSummary} />
+                      ) : null}
                       {displayedDiagnosisCandidates.map((item) => (
                         <Card key={item.name} size="small">
                           <Space orientation="vertical" style={{ width: '100%' }}>
@@ -604,6 +693,14 @@ function App() {
                           </Space>
                         </Card>
                       ))}
+                      {!displayedDiagnosisCandidates.length && !diagnosisPreviewQuery.isPending ? (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          title="Diagnosis preview unavailable"
+                          description="The diagnosis tab now reads live backend output. Start the backend or a consultation session to populate this panel."
+                        />
+                      ) : null}
                     </div>
                   </Card>
 
@@ -625,6 +722,17 @@ function App() {
                           description={alert.detail}
                         />
                       ))}
+                      {diagnosisRecommendedTests.length ? (
+                        <Card size="small">
+                          <Space orientation="vertical" style={{ width: '100%' }}>
+                            <Text strong>Recommended tests</Text>
+                            <Text>{diagnosisRecommendedTests.join(', ')}</Text>
+                            {diagnosisFollowUpPlan ? (
+                              <Text type="secondary">{diagnosisFollowUpPlan}</Text>
+                            ) : null}
+                          </Space>
+                        </Card>
+                      ) : null}
                     </div>
                   </Card>
                 </div>

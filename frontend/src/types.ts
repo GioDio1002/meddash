@@ -50,6 +50,11 @@ export type BackendCitation = {
   relevance: number
 }
 
+export type BackendRagQueryResponse = {
+  query: string
+  citations: BackendCitation[]
+}
+
 export type BackendMedicationAlert = {
   alert_id: string
   medication: string
@@ -61,6 +66,16 @@ export type BackendDiagnosisCandidate = {
   label: string
   confidence: number
   rationale: string
+}
+
+export type BackendCarePlan = {
+  report_id: string
+  summary: string
+  differential: BackendDiagnosisCandidate[]
+  recommended_tests: string[]
+  follow_up_plan: string
+  citations: BackendCitation[]
+  medication_alerts: BackendMedicationAlert[]
 }
 
 export type BackendWorkflowEvent = {
@@ -102,13 +117,6 @@ export type BackendSession = {
   }
   citations: BackendCitation[]
   medication_alerts: BackendMedicationAlert[]
-  care_plan: null | {
-    summary: string
-    differential: BackendDiagnosisCandidate[]
-    recommended_tests: string[]
-    follow_up_plan: string
-    citations: BackendCitation[]
-    medication_alerts: BackendMedicationAlert[]
-  }
+  care_plan: null | BackendCarePlan
   workflow_events: BackendWorkflowEvent[]
 }

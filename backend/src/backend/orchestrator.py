@@ -21,7 +21,7 @@ from backend.models import (
     WorkflowEvent,
     WorkflowHandoffRequest,
 )
-from backend.store import InMemoryStore
+from backend.store import StoreProtocol
 
 
 class ConsultOrchestrator:
@@ -35,7 +35,7 @@ class ConsultOrchestrator:
         "HandoffAgent",
     )
 
-    def __init__(self, store: InMemoryStore) -> None:
+    def __init__(self, store: StoreProtocol) -> None:
         self.store = store
 
     def start_consult(self, request: StartConsultRequest) -> ConsultSession:
@@ -69,7 +69,7 @@ class ConsultOrchestrator:
     def generate_diagnosis(
         self, session_id: str | None, symptoms: list[str], notes: str | None
     ) -> CarePlanReport:
-        source_text = " ".join([*symptoms, notes or ""]).strip() or "general consultation"
+        source_text = self._compose_source_text(session_id, symptoms, notes)
         citations = self._build_citations(source_text)
         alerts = self._build_medication_alerts(source_text)
         return self._build_care_plan(source_text, citations, alerts)
@@ -268,21 +268,24 @@ class ConsultOrchestrator:
         )
 
     def _build_citations(self, query: str) -> list[EvidenceCitation]:
-        topic = query[:64] or "consultation"
-        return [
-            EvidenceCitation(
-                title="Triage Red Flag Guidance",
-                source_type="guideline",
-                snippet=f"Escalate urgent presentations when symptoms resemble: {topic}.",
-                relevance=0.91,
-            ),
-            EvidenceCitation(
-                title="Medication Contraindication Note",
-                source_type="drug_label",
-                snippet="Review allergies and current medications before recommending treatment.",
-                relevance=0.82,
-            ),
-        ]
+        return self.store.query_documents(query)
+
+    def _compose_source_text(
+        self, session_id: str | None, symptoms: list[str], notes: str | None
+    ) -> str:
+        if session_id:
+            session = self.store.get_session(session_id)
+            if session is not None:
+                persisted_parts = [
+                    *session.intake.symptoms,
+                    *[message.content for message in session.messages[-2:]],
+                    notes or "",
+                    *symptoms,
+                ]
+                persisted_text = " ".join(part for part in persisted_parts if part).strip()
+                if persisted_text:
+                    return persisted_text
+        return " ".join([*symptoms, notes or ""]).strip() or "general consultation"
 
     def _build_medication_alerts(self, text: str) -> list[MedicationAlert]:
         lowered = text.lower()

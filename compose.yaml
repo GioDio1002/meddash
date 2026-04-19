@@ -1,4 +1,30 @@
 services:
+  frontend-app:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "4173:80"
+    profiles: ["app"]
+
+  backend-app:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      APP_ENV: development
+      APP_PORT: 8000
+      POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/meddash
+      REDIS_URL: redis://redis:6379/0
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      - postgres
+      - redis
+      - otel-collector
+    ports:
+      - "8000:8000"
+    profiles: ["app"]
+
   postgres:
     image: postgres:16
     environment:
@@ -36,4 +62,3 @@ services:
       - "16686:16686"
       - "14250:14250"
       - "14268:14268"
-

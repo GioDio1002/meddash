@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from collections.abc import Iterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,12 +17,13 @@ from backend.models import (
     ChatRequest,
     DiagnosisRequest,
     PatientSaveRequest,
+    RagDocumentUpsertRequest,
     RagQueryRequest,
     StartConsultRequest,
     WorkflowHandoffRequest,
 )
 from backend.orchestrator import ConsultOrchestrator
-from backend.store import InMemoryStore
+from backend.store import InMemoryStore, PostgresRedisStore, StoreProtocol
 
 
 def configure_telemetry() -> None:
@@ -28,9 +31,36 @@ def configure_telemetry() -> None:
         trace.set_tracer_provider(TracerProvider())
 
 
+def build_store() -> StoreProtocol:
+    store_mode = os.getenv("MEDDASH_STORE_MODE", "postgres_redis").lower()
+    if store_mode == "inmemory":
+        store: StoreProtocol = InMemoryStore()
+    else:
+        store = PostgresRedisStore(
+            postgres_dsn=os.getenv(
+                "POSTGRES_DSN", "postgresql://postgres:postgres@127.0.0.1:5432/meddash"
+            ),
+            redis_url=os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0"),
+        )
+    store.initialize()
+    return store
+
+
 def create_app() -> FastAPI:
     configure_telemetry()
-    app = FastAPI(title="MedDash Backend", version="0.1.0")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> Iterator[None]:
+        store = build_store()
+        app.state.store = store
+        app.state.orchestrator = ConsultOrchestrator(store)
+        app.state.logger = logging.getLogger("meddash.backend")
+        try:
+            yield
+        finally:
+            store.close()
+
+    app = FastAPI(title="MedDash Backend", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -38,9 +68,6 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     FastAPIInstrumentor.instrument_app(app)
-    app.state.store = InMemoryStore()
-    app.state.orchestrator = ConsultOrchestrator(app.state.store)
-    app.state.logger = logging.getLogger("meddash.backend")
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -89,6 +116,11 @@ def create_app() -> FastAPI:
     def rag_query(request: RagQueryRequest) -> dict:
         citations = app.state.orchestrator.rag_query(request.query)
         return {"query": request.query, "citations": [c.model_dump(mode="json") for c in citations]}
+
+    @app.post("/api/rag/documents")
+    def rag_documents(request: RagDocumentUpsertRequest) -> dict:
+        documents = app.state.store.save_documents(request.documents)
+        return {"documents": [document.model_dump(mode="json") for document in documents]}
 
     @app.post("/api/diagnosis/generate")
     def diagnosis_generate(request: DiagnosisRequest) -> dict:
