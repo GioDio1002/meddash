@@ -1,4 +1,5 @@
 import {
+  App as AntdApp,
   Alert,
   Avatar,
   Badge,
@@ -8,7 +9,6 @@ import {
   Descriptions,
   Form,
   Input,
-  message,
   Progress,
   Row,
   Select,
@@ -94,6 +94,7 @@ function mapMedicationAlerts(carePlan: BackendCarePlan | null | undefined) {
 }
 
 function App() {
+  const { message } = AntdApp.useApp()
   const [activeTab, setActiveTab] = useState('dashboard')
   const [knowledgeDraftQuery, setKnowledgeDraftQuery] = useState(DEFAULT_KNOWLEDGE_QUERY)
   const [knowledgeQuery, setKnowledgeQuery] = useState(DEFAULT_KNOWLEDGE_QUERY)

@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ConfigProvider } from 'antd'
+import { App as AntdApp, ConfigProvider } from 'antd'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
@@ -18,11 +18,13 @@ createRoot(document.getElementById('root')!).render(
             colorTextBase: '#18222f',
             borderRadius: 18,
             fontFamily:
-              '"IBM Plex Sans", "Segoe UI", "PingFang SC", sans-serif',
+            '"IBM Plex Sans", "Segoe UI", "PingFang SC", sans-serif',
           },
         }}
       >
-        <App />
+        <AntdApp>
+          <App />
+        </AntdApp>
       </ConfigProvider>
     </QueryClientProvider>
   </StrictMode>,

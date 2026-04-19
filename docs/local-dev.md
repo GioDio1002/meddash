@@ -51,4 +51,4 @@ To validate the application images as well:
 - Frontend build/type check: `cd frontend && bun run build`
 - Backend lint: `cd backend && uv run ruff check`
 - Backend tests: `cd backend && uv run pytest`
-- E2E: `cd frontend && bunx playwright test`
+- E2E: `cd frontend && bun run e2e`

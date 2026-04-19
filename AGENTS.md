@@ -15,11 +15,22 @@
 - Backend: lint, tests
 - Full stack: Playwright E2E for core consultation paths
 - Observability: logs, traces, and workflow correlation must be verifiable
+- Prefer exact repo commands when available:
+  - `make frontend-install`
+  - `make backend-sync`
+  - `cd frontend && bun run lint`
+  - `cd frontend && bun run build`
+  - `cd backend && uv run ruff check`
+  - `cd backend && uv run pytest`
+  - `cd frontend && bun run e2e`
 
 ## Architecture Defaults
 
 - Frontend: Bun + Vite + React + TypeScript + Ant Design
 - Backend: Python 3.12.11 + FastAPI + LangGraph
+- Runtime storage default: PostgreSQL for durable records plus Redis session caching
+- Test fallback store: `MEDDASH_STORE_MODE=inmemory`
+- Docker app builds: `docker compose --profile app build frontend-app backend-app`
 - E2E: Playwright
 - Observability: OpenTelemetry
 - Prompt Ops: Agenta remains optional and disabled by default
