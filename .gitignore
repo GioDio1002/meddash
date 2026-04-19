@@ -12,10 +12,12 @@ __pycache__/
 .ruff_cache/
 .venv/
 .python-version
+.mypy_cache/
 
 # Env
 .env
 .env.local
+.envrc
 
 # Local workflow
 .omx/
@@ -30,3 +32,8 @@ __pycache__/
 postgres-data/
 redis-data/
 otel-data/
+
+# Packaging / build leftovers
+build/
+site/
+*.egg-info/

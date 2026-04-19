@@ -1,6 +1,8 @@
 # MedDash
 
-MedDash is a clinician-assistive medical multi-agent system built with a React frontend and a FastAPI + LangGraph backend.
+A clinician-assistive medical command center that turns patient inputs into triage, evidence-backed care drafts, medication safety checks, and clinician handoffs.
+
+MedDash is built with a React frontend and a FastAPI + LangGraph backend.
 
 ## Stack
 
